@@ -73,3 +73,222 @@ struct TextExtractionServiceTests {
         #expect(TextExtractionService.isValidInstagramURL("not a url at all") == false)
     }
 }
+
+// MARK: - Caption Extraction Tests
+
+struct CaptionExtractionTests {
+
+    @Test("Extract caption ending with 'more'")
+    func testExtractCaptionWithMore() {
+        let rawText = """
+        Instagram
+        username • Follow
+        This is my delicious recipe for pasta... more
+        View all 50 comments
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption == "This is my delicious recipe for pasta")
+    }
+
+    @Test("Extract caption ending with ellipsis")
+    func testExtractCaptionWithEllipsis() {
+        let rawText = """
+        username •
+        Amazing chocolate cake recipe with secret ingredient...
+        Liked by user1 and others
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption == "Amazing chocolate cake recipe with secret ingredient")
+    }
+
+    @Test("Extract caption with colon (recipe format)")
+    func testExtractCaptionWithColon() {
+        let rawText = """
+        Instagram
+        Follow
+        Ingredients: flour, sugar, eggs, butter
+        Sign up
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption.contains("Ingredients"))
+    }
+
+    @Test("Filter out Instagram UI elements")
+    func testFilterUIElements() {
+        let rawText = """
+        Log in
+        Sign up
+        Follow
+        Continue on web
+        Open app
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption.isEmpty)
+    }
+
+    @Test("Filter out 'username • Follow' pattern")
+    func testFilterUsernameFollowPattern() {
+        let rawText = """
+        chef_mike • Follow
+        Best soup recipe ever shared here today
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(!caption.contains("Follow"))
+        #expect(caption.contains("soup recipe") || caption.contains("Best"))
+    }
+
+    @Test("Extract longest non-UI line as fallback")
+    func testExtractLongestLine() {
+        let rawText = """
+        Short
+        This is a much longer line that should be selected as the caption
+        Also short
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption.contains("longer line"))
+    }
+
+    @Test("Handle empty input")
+    func testEmptyInput() {
+        let caption = TextExtractionService.extractCaption(from: "")
+        #expect(caption.isEmpty)
+    }
+
+    @Test("Handle input with only UI elements")
+    func testOnlyUIElements() {
+        let rawText = """
+        Instagram
+        Log in
+        Sign up for Instagram
+        Terms of use
+        Privacy Policy
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption.isEmpty)
+    }
+
+    @Test("Clean trailing 'more' variations")
+    func testCleanMoreVariations() {
+        let inputs = [
+            "Recipe text... more",
+            "Recipe text...more",
+            "Recipe text… more",
+            "Recipe text…more"
+        ]
+        for input in inputs {
+            let caption = TextExtractionService.extractCaption(from: input)
+            #expect(!caption.contains("more"), "Failed for input: \(input)")
+        }
+    }
+
+    @Test("Skip short lines under 10 characters")
+    func testSkipShortLines() {
+        let rawText = """
+        Hi
+        Short
+        This is a proper recipe description that should be extracted
+        Bye
+        """
+        let caption = TextExtractionService.extractCaption(from: rawText)
+        #expect(caption.contains("proper recipe"))
+    }
+}
+
+// MARK: - DOM Text Cleaning Tests
+
+struct DOMTextCleaningTests {
+
+    @Test("Remove likes and comments line")
+    func testRemoveLikesComments() {
+        let rawText = """
+        Recipe content here
+        1,234 likes, 56 comments
+        More recipe content
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(!cleaned.contains("likes"))
+        #expect(!cleaned.contains("comments"))
+        #expect(cleaned.contains("Recipe content"))
+    }
+
+    @Test("Remove standalone likes count")
+    func testRemoveStandaloneLikes() {
+        let rawText = """
+        Delicious pasta recipe
+        6,012 likes
+        Add the sauce slowly
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(!cleaned.contains("likes"))
+        #expect(cleaned.contains("pasta recipe"))
+        #expect(cleaned.contains("sauce"))
+    }
+
+    @Test("Remove date attribution line")
+    func testRemoveDateLine() {
+        let rawText = """
+        Best chocolate cake
+        chef_mike on December 25, 2024:
+        Mix all ingredients
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(!cleaned.contains("December"))
+        #expect(!cleaned.contains("chef_mike on"))
+        #expect(cleaned.contains("chocolate cake"))
+        #expect(cleaned.contains("Mix all"))
+    }
+
+    @Test("Remove various month formats")
+    func testRemoveVariousMonths() {
+        let months = ["January", "February", "March", "April", "May", "June",
+                      "July", "August", "September", "October", "November", "December"]
+        for month in months {
+            let rawText = "user on \(month) 1, 2024:\nRecipe text"
+            let cleaned = TextExtractionService.cleanDOMText(rawText)
+            #expect(!cleaned.lowercased().contains(month.lowercased()), "Failed for \(month)")
+        }
+    }
+
+    @Test("Preserve recipe content")
+    func testPreserveContent() {
+        let rawText = """
+        Ingredients:
+        - 2 cups flour
+        - 1 cup sugar
+        - 3 eggs
+
+        Instructions:
+        Mix well and bake at 350F
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(cleaned.contains("Ingredients"))
+        #expect(cleaned.contains("flour"))
+        #expect(cleaned.contains("Instructions"))
+        #expect(cleaned.contains("350F"))
+    }
+
+    @Test("Handle empty input")
+    func testEmptyInput() {
+        let cleaned = TextExtractionService.cleanDOMText("")
+        #expect(cleaned.isEmpty)
+    }
+
+    @Test("Preserve empty lines for formatting")
+    func testPreserveEmptyLines() {
+        let rawText = """
+        First paragraph
+
+        Second paragraph
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(cleaned.contains("First"))
+        #expect(cleaned.contains("Second"))
+    }
+
+    @Test("Keep longer lines with 'likes' in content")
+    func testKeepLikesInContent() {
+        let rawText = "Everyone likes this recipe because it's so easy to make"
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(cleaned.contains("likes"))
+    }
+}

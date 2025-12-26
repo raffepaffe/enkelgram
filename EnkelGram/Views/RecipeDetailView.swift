@@ -29,7 +29,7 @@ struct RecipeDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
     /// Controls whether we show the WebView or the saved content
-    @State private var showWebView: Bool = true
+    @State private var showWebView: Bool = false
 
     /// Triggers screenshot extraction when set to true
     @State private var shouldExtract: Bool = false
@@ -49,7 +49,7 @@ struct RecipeDetailView: View {
 
     /// Whether we have extracted the caption text
     private var hasText: Bool {
-        !recipe.captionText.isEmpty
+        !recipe.title.isEmpty || !recipe.bodyText.isEmpty
     }
 
     /// Whether both image and text are saved
@@ -86,9 +86,9 @@ struct RecipeDetailView: View {
         .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                if !isFullySaved {
-                    // Show Save button or progress
+            // Only show toolbar when recipe is not fully saved yet
+            if !isFullySaved {
+                ToolbarItem(placement: .primaryAction) {
                     if isExtracting {
                         HStack(spacing: 8) {
                             ProgressView()
@@ -100,14 +100,6 @@ struct RecipeDetailView: View {
                             isExtracting = true
                             shouldExtract = true
                         }
-                    }
-                } else {
-                    // Show checkmark when fully saved (image + text)
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Saved")
-                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -142,7 +134,7 @@ struct RecipeDetailView: View {
         }
     }
 
-    /// Shows the saved screenshot and extracted text
+    /// Shows the saved screenshot and extracted text (editable)
     private var savedContentSection: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -155,11 +147,26 @@ struct RecipeDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 
-                // Extracted caption
-                if !recipe.captionText.isEmpty {
-                    Text(recipe.captionText)
-                        .font(.body)
-                        .textSelection(.enabled)  // Allow copying text
+                // Editable title
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Title")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Recipe title", text: $recipe.title, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                // Editable body text
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recipe")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $recipe.bodyText)
+                        .frame(minHeight: 200)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                        )
                 }
 
                 // Metadata
@@ -184,91 +191,33 @@ struct RecipeDetailView: View {
         }
 
         // Process extracted text
-        if !extractedText.isEmpty && recipe.captionText.isEmpty {
+        if !extractedText.isEmpty && recipe.title.isEmpty {
             // Check if text contains DOM body marker
             if extractedText.contains("{{BODY}}") {
                 // Split into OCR title and DOM body
                 let parts = extractedText.components(separatedBy: "\n\n{{BODY}}")
                 let ocrPart = parts[0]
-                var domPart = parts.count > 1 ? parts[1] : ""
+                let domPart = parts.count > 1 ? parts[1] : ""
 
                 // Extract title from OCR text
-                let cleanedTitle = TextExtractionService.extractCaption(from: ocrPart)
+                recipe.title = TextExtractionService.extractCaption(from: ocrPart)
 
                 // Clean DOM body - remove Instagram metadata lines
-                domPart = cleanDOMText(domPart)
-
-                // Combine title and body
-                if !domPart.isEmpty {
-                    recipe.captionText = cleanedTitle + "\n\n" + domPart
-                } else {
-                    recipe.captionText = cleanedTitle
-                }
+                recipe.bodyText = TextExtractionService.cleanDOMText(domPart)
             } else {
-                // No DOM body, just use OCR text
-                let cleanedCaption = TextExtractionService.extractCaption(from: extractedText)
-                recipe.captionText = cleanedCaption
+                // No DOM body, just use OCR text as title
+                recipe.title = TextExtractionService.extractCaption(from: extractedText)
             }
         }
 
         // Mark as fully extracted only when we have both image and text
-        if recipe.screenshotData != nil && !recipe.captionText.isEmpty {
+        if recipe.screenshotData != nil && !recipe.title.isEmpty {
             recipe.isContentExtracted = true
         }
 
         isExtracting = false
 
         // SwiftData automatically saves changes
-    }
-
-    /// Cleans DOM extracted text by removing Instagram metadata
-    private func cleanDOMText(_ text: String) -> String {
-        var lines = text.components(separatedBy: "\n")
-
-        // Filter out metadata lines
-        lines = lines.filter { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let lowercased = trimmed.lowercased()
-
-            // Skip empty lines (will add back proper spacing later)
-            if trimmed.isEmpty {
-                return true
-            }
-
-            // Remove lines with likes/comments pattern: "X likes, Y comments"
-            if lowercased.contains(" likes") || lowercased.contains(" like,") {
-                if lowercased.contains(" comment") {
-                    return false
-                }
-            }
-
-            // Remove standalone likes count: "6,012 likes"
-            if lowercased.hasSuffix(" likes") && trimmed.count < 20 {
-                return false
-            }
-
-            // Remove lines with "username on Date:" pattern
-            if lowercased.contains(" on ") && (
-                lowercased.contains("january") ||
-                lowercased.contains("february") ||
-                lowercased.contains("march") ||
-                lowercased.contains("april") ||
-                lowercased.contains("may") ||
-                lowercased.contains("june") ||
-                lowercased.contains("july") ||
-                lowercased.contains("august") ||
-                lowercased.contains("september") ||
-                lowercased.contains("october") ||
-                lowercased.contains("november") ||
-                lowercased.contains("december")
-            ) {
-                return false
-            }
-
-            return true
-        }
-
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

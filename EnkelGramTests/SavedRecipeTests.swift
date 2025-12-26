@@ -27,7 +27,8 @@ struct SavedRecipeTests {
 
         // Assert
         #expect(recipe.instagramURL == url)
-        #expect(recipe.captionText.isEmpty)
+        #expect(recipe.title.isEmpty)
+        #expect(recipe.bodyText.isEmpty)
         #expect(recipe.screenshotData == nil)
         #expect(recipe.isContentExtracted == false)
         #expect(recipe.id != UUID()) // Has a unique ID
@@ -84,14 +85,14 @@ struct SavedRecipeTests {
     @Test("Caption preview shows full text when short")
     func testCaptionPreviewShortText() {
         let recipe = SavedRecipe(instagramURL: "https://instagram.com/p/test/")
-        recipe.captionText = "Short caption"
+        recipe.title = "Short caption"
         #expect(recipe.captionPreview == "Short caption")
     }
 
     @Test("Caption preview truncates long text")
     func testCaptionPreviewLongText() {
         let recipe = SavedRecipe(instagramURL: "https://instagram.com/p/test/")
-        recipe.captionText = String(repeating: "A", count: 150) // 150 characters
+        recipe.title = String(repeating: "A", count: 150) // 150 characters
 
         #expect(recipe.captionPreview.count == 103) // 100 chars + "..."
         #expect(recipe.captionPreview.hasSuffix("..."))
@@ -100,9 +101,9 @@ struct SavedRecipeTests {
     @Test("Caption preview handles exactly 100 characters")
     func testCaptionPreviewExactly100Chars() {
         let recipe = SavedRecipe(instagramURL: "https://instagram.com/p/test/")
-        recipe.captionText = String(repeating: "B", count: 100)
+        recipe.title = String(repeating: "B", count: 100)
 
-        #expect(recipe.captionPreview == recipe.captionText)
+        #expect(recipe.captionPreview == recipe.title)
         #expect(!recipe.captionPreview.hasSuffix("..."))
     }
 }

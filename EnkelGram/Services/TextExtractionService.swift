@@ -267,4 +267,50 @@ extension TextExtractionService {
             .replacingOccurrences(of: " more$", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
     }
+
+    /// Cleans DOM extracted text by removing Instagram metadata lines.
+    ///
+    /// - Parameter text: Raw text extracted from Instagram DOM
+    /// - Returns: Cleaned text with metadata removed
+    static func cleanDOMText(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+
+        // Filter out metadata lines
+        lines = lines.filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let lowercased = trimmed.lowercased()
+
+            // Keep empty lines for spacing
+            if trimmed.isEmpty {
+                return true
+            }
+
+            // Remove lines with likes/comments pattern: "X likes, Y comments"
+            if lowercased.contains(" likes") || lowercased.contains(" like,") {
+                if lowercased.contains(" comment") {
+                    return false
+                }
+            }
+
+            // Remove standalone likes count: "6,012 likes"
+            if lowercased.hasSuffix(" likes") && trimmed.count < 20 {
+                return false
+            }
+
+            // Remove lines with "username on Date:" pattern
+            let monthNames = ["january", "february", "march", "april", "may", "june",
+                              "july", "august", "september", "october", "november", "december"]
+            if lowercased.contains(" on ") {
+                for month in monthNames {
+                    if lowercased.contains(month) {
+                        return false
+                    }
+                }
+            }
+
+            return true
+        }
+
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

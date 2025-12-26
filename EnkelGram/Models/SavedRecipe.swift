@@ -27,8 +27,11 @@ final class SavedRecipe {
     /// The original Instagram URL (e.g., "https://www.instagram.com/p/ABC123/")
     var instagramURL: String
 
-    /// The extracted caption text from the post (using Vision OCR)
-    var captionText: String
+    /// The recipe title (extracted via OCR)
+    var title: String
+
+    /// The recipe body text (extracted via DOM)
+    var bodyText: String
 
     /// When this recipe was saved
     var dateSaved: Date
@@ -50,7 +53,8 @@ final class SavedRecipe {
     init(instagramURL: String) {
         self.id = UUID()
         self.instagramURL = instagramURL
-        self.captionText = ""
+        self.title = ""
+        self.bodyText = ""
         self.dateSaved = Date()
         self.screenshotData = nil
         self.isContentExtracted = false
@@ -58,15 +62,15 @@ final class SavedRecipe {
 
     // MARK: - Computed Properties
 
-    /// Returns a preview of the caption (first 100 characters)
+    /// Returns a preview of the title (first 100 characters)
     var captionPreview: String {
-        if captionText.isEmpty {
+        if title.isEmpty {
             return "Tap to load content..."
         }
-        if captionText.count <= 100 {
-            return captionText
+        if title.count <= 100 {
+            return title
         }
-        return String(captionText.prefix(100)) + "..."
+        return String(title.prefix(100)) + "..."
     }
 
     /// Extracts the post ID from the Instagram URL for display
