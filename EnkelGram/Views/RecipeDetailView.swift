@@ -56,6 +56,9 @@ struct RecipeDetailView: View {
     /// Loading state for OCR processing
     @State private var isProcessingOCR: Bool = false
 
+    /// Show confirmation alert when trying to leave without completing import
+    @State private var showCancelConfirmation: Bool = false
+
     // MARK: - Computed Properties
 
     /// Whether we have saved the thumbnail image
@@ -116,10 +119,16 @@ struct RecipeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            // Custom back button that always goes to main list
+            // Custom back button - confirms before leaving incomplete imports
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
-                    dismiss()
+                    if isFullySaved {
+                        // Recipe is complete, safe to leave
+                        dismiss()
+                    } else {
+                        // Recipe is incomplete, ask for confirmation
+                        showCancelConfirmation = true
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -189,6 +198,18 @@ struct RecipeDetailView: View {
             }
         } message: {
             Text("How would you like to add the extracted text?")
+        }
+        .alert("Cancel Import?", isPresented: $showCancelConfirmation) {
+            Button("Continue Importing", role: .cancel) {
+                // Stay on the page - do nothing
+            }
+            Button("Cancel Import", role: .destructive) {
+                // Delete the incomplete recipe and go back
+                modelContext.delete(recipe)
+                dismiss()
+            }
+        } message: {
+            Text("You haven't saved both the image and text yet. If you leave now, this recipe will be deleted.")
         }
     }
 
