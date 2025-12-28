@@ -59,6 +59,12 @@ struct RecipeDetailView: View {
     /// Show confirmation alert when trying to leave without completing import
     @State private var showCancelConfirmation: Bool = false
 
+    /// Show photo picker for replacing the recipe image
+    @State private var showImagePicker: Bool = false
+
+    /// Selected photo for image replacement (separate from OCR picker)
+    @State private var selectedImageItem: PhotosPickerItem?
+
     // MARK: - Computed Properties
 
     /// Whether we have saved the thumbnail image
@@ -211,6 +217,14 @@ struct RecipeDetailView: View {
         } message: {
             Text("You haven't saved both the image and text yet. If you leave now, this recipe will be deleted.")
         }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePickerSheet(selectedItem: $selectedImageItem)
+        }
+        .onChange(of: selectedImageItem) { oldValue, newValue in
+            if let newValue {
+                processReplacementImage(newValue)
+            }
+        }
     }
 
     // MARK: - Subviews
@@ -245,13 +259,16 @@ struct RecipeDetailView: View {
     private var savedContentSection: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                // Screenshot - full width
+                // Screenshot - full width, long press to replace
                 if let imageData = recipe.screenshotData,
                    let uiImage = UIImage(data: imageData) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity)
+                        .onLongPressGesture {
+                            showImagePicker = true
+                        }
                 }
 
                 // Editable title
@@ -388,6 +405,72 @@ struct RecipeDetailView: View {
                 await MainActor.run {
                     isProcessingOCR = false
                     errorMessage = "Failed to load image"
+                }
+            }
+        }
+    }
+
+    /// Processes a photo selected for image replacement (not OCR)
+    private func processReplacementImage(_ item: PhotosPickerItem) {
+        selectedImageItem = nil
+
+        Task {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self),
+                      let uiImage = UIImage(data: data) else {
+                    return
+                }
+
+                // Save the image as PNG (supports transparency)
+                await MainActor.run {
+                    recipe.screenshotData = uiImage.pngData()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Failed to load image"
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Image Picker Sheet
+
+/// A simple sheet that presents a PhotosPicker for selecting an image.
+/// Used for replacing the recipe image via long press.
+private struct ImagePickerSheet: View {
+    @Binding var selectedItem: PhotosPickerItem?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            PhotosPicker(
+                selection: $selectedItem,
+                matching: .images,
+                photoLibrary: .shared()
+            ) {
+                VStack(spacing: 16) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.secondary)
+                    Text("Select an image to replace the current photo")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("Replace Image")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .onChange(of: selectedItem) { _, newValue in
+                if newValue != nil {
+                    dismiss()
                 }
             }
         }
