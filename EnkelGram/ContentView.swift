@@ -44,6 +44,9 @@ struct ContentView: View {
     /// Recipe ID passed from Share Extension via URL scheme
     @Binding var pendingRecipeID: UUID?
 
+    /// Track if we've already checked for new recipes (to avoid re-navigating on return)
+    @State private var hasCheckedForNewRecipe = false
+
     // MARK: - Body
 
     var body: some View {
@@ -81,7 +84,11 @@ struct ContentView: View {
                 RecipeDetailView(recipe: recipe)
             }
             .onAppear {
-                checkForNewRecipeFromShareExtension()
+                // Only check once to avoid re-navigating when returning from detail view
+                if !hasCheckedForNewRecipe {
+                    hasCheckedForNewRecipe = true
+                    checkForNewRecipeFromShareExtension()
+                }
             }
             .onChange(of: pendingRecipeID) { oldValue, newValue in
                 if let recipeID = newValue {

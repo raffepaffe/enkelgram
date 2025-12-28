@@ -273,9 +273,40 @@ extension TextExtractionService {
     /// - Parameter text: Raw text extracted from Instagram DOM
     /// - Returns: Cleaned text with metadata removed
     static func cleanDOMText(_ text: String) -> String {
-        var lines = text.components(separatedBy: "\n")
+        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Filter out metadata lines
+        // Remove the header pattern: "username\n•\nFollow\n" or similar variations
+        // This appears at the start of Instagram captions
+        // Pattern: username (alphanumeric with _ or .), then newline, bullet, newline, Follow/Following, newline
+        let headerPatterns = [
+            "^\\s*[a-zA-Z0-9_.]+\\s*\\n\\s*•\\s*\\n\\s*Follow\\s*\\n",
+            "^\\s*[a-zA-Z0-9_.]+\\s*\\n\\s*·\\s*\\n\\s*Follow\\s*\\n",
+            "^\\s*[a-zA-Z0-9_.]+\\s*\\n\\s*•\\s*\\n\\s*Following\\s*\\n",
+            "^\\s*[a-zA-Z0-9_.]+\\s*\\n\\s*·\\s*\\n\\s*Following\\s*\\n",
+            // Also handle case where bullet and Follow are on same line
+            "^\\s*[a-zA-Z0-9_.]+\\s*\\n\\s*[•·]\\s*Follow\\s*\\n",
+            "^\\s*[a-zA-Z0-9_.]+\\s*\\n\\s*[•·]\\s*Following\\s*\\n"
+        ]
+
+        for pattern in headerPatterns {
+            if let range = result.range(of: pattern, options: .regularExpression) {
+                result = String(result[range.upperBound...])
+                break
+            }
+        }
+
+        // If header still present, try simpler approach: find "Follow\n" and take everything after
+        if let followRange = result.range(of: "Follow\n"),
+           followRange.lowerBound < result.index(result.startIndex, offsetBy: min(100, result.count)) {
+            result = String(result[followRange.upperBound...])
+        } else if let followingRange = result.range(of: "Following\n"),
+                  followingRange.lowerBound < result.index(result.startIndex, offsetBy: min(100, result.count)) {
+            result = String(result[followingRange.upperBound...])
+        }
+
+        var lines = result.components(separatedBy: "\n")
+
+        // Filter out metadata lines at the end
         lines = lines.filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             let lowercased = trimmed.lowercased()

@@ -28,6 +28,9 @@ struct RecipeDetailView: View {
     /// Access to SwiftData for saving
     @Environment(\.modelContext) private var modelContext
 
+    /// Dismiss action to go back to main list
+    @Environment(\.dismiss) private var dismiss
+
     /// Controls whether we show the WebView or the saved content
     @State private var showWebView: Bool = false
 
@@ -85,8 +88,21 @@ struct RecipeDetailView: View {
         }
         .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            // Only show toolbar when recipe is not fully saved yet
+            // Custom back button that always goes to main list
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                }
+            }
+
+            // Only show save button when recipe is not fully saved yet
             if !isFullySaved {
                 ToolbarItem(placement: .primaryAction) {
                     if isExtracting {

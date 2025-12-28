@@ -291,4 +291,42 @@ struct DOMTextCleaningTests {
         let cleaned = TextExtractionService.cleanDOMText(rawText)
         #expect(cleaned.contains("likes"))
     }
+
+    @Test("Remove username header pattern")
+    func testRemoveUsernameHeader() {
+        let rawText = """
+        chefjoshadamo
+        •
+        Follow
+        How to make a Michelin star, Steak Au Poivre sauce #chef
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(!cleaned.contains("chefjoshadamo"))
+        #expect(!cleaned.contains("Follow"))
+        #expect(cleaned.contains("Michelin star"))
+    }
+
+    @Test("Keep all body text after header")
+    func testKeepBodyText() {
+        let rawText = """
+        chef_mike
+        •
+        Follow
+        This is the full recipe text
+        with multiple lines
+        and all the details #cooking #food
+        """
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(cleaned.contains("full recipe text"))
+        #expect(cleaned.contains("multiple lines"))
+        #expect(cleaned.contains("#cooking"))
+    }
+
+    @Test("Keep hashtags in content")
+    func testKeepHashtags() {
+        let rawText = "Best pasta recipe #italian #food #cooking"
+        let cleaned = TextExtractionService.cleanDOMText(rawText)
+        #expect(cleaned.contains("#italian"))
+        #expect(cleaned.contains("#food"))
+    }
 }

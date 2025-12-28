@@ -176,10 +176,10 @@ struct InstagramWebView: UIViewRepresentable {
             let width = CGFloat(cgImage.width)
             let height = CGFloat(cgImage.height)
 
-            // The thumbnail is roughly in the middle of the screen
-            // Skip top ~20% (header/nav) and bottom ~25% (buttons)
+            // The thumbnail is roughly in the upper-middle of the screen
+            // Skip top ~18% (header/nav) and bottom ~48% (shared text + buttons)
             let topInset = height * 0.18
-            let bottomInset = height * 0.28
+            let bottomInset = height * 0.48
             let sideInset = width * 0.1
 
             let cropRect = CGRect(

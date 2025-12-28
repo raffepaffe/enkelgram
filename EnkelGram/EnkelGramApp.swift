@@ -32,9 +32,21 @@ struct EnkelGramApp: App {
             )
             modelContainer = try ModelContainer(for: schema, configurations: config)
         } catch {
-            // If shared storage fails, fall back to default storage
-            // This ensures the app still works even without App Groups configured
-            fatalError("Failed to create ModelContainer: \(error)")
+            // Schema changed - delete old database and create fresh one
+            // This handles migration issues during development
+            try? FileManager.default.removeItem(at: EnkelGramApp.sharedDatabaseURL)
+
+            do {
+                let schema = Schema([SavedRecipe.self])
+                let config = ModelConfiguration(
+                    schema: schema,
+                    url: EnkelGramApp.sharedDatabaseURL,
+                    allowsSave: true
+                )
+                modelContainer = try ModelContainer(for: schema, configurations: config)
+            } catch {
+                fatalError("Failed to create ModelContainer: \(error)")
+            }
         }
     }
 
