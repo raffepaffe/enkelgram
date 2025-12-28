@@ -43,7 +43,6 @@ struct RecipeRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 4)
     }
 
     // MARK: - Subviews
@@ -54,16 +53,20 @@ struct RecipeRowView: View {
         if let imageData = recipe.screenshotData,
            let uiImage = UIImage(data: imageData) {
             // Show the actual screenshot
-            Image(uiImage: uiImage)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 60, height: 60)
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.clear)
+                .frame(width: 100, height: 150)
+                .overlay {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         } else {
             // Show a placeholder when no screenshot yet
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.gray.opacity(0.2))
-                .frame(width: 60, height: 60)
+                .frame(width: 100, height: 150)
                 .overlay {
                     Image(systemName: "photo")
                         .foregroundStyle(.secondary)

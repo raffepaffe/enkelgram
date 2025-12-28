@@ -175,14 +175,14 @@ struct RecipeDetailView: View {
     /// Shows the saved screenshot and extracted text (editable)
     private var savedContentSection: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Screenshot
+            VStack(alignment: .leading, spacing: 12) {
+                // Screenshot - full width
                 if let imageData = recipe.screenshotData,
                    let uiImage = UIImage(data: imageData) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(maxWidth: .infinity)
                 }
 
                 // Editable title
@@ -225,7 +225,7 @@ struct RecipeDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
-            .padding()
+            .padding(.horizontal)
         }
     }
 

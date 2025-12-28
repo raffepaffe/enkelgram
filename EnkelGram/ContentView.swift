@@ -143,9 +143,11 @@ struct ContentView: View {
                 NavigationLink(value: recipe) {
                     RecipeRowView(recipe: recipe)
                 }
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
             }
             .onDelete(perform: deleteRecipes)
         }
+        .listStyle(.plain)
         .searchable(text: $searchText, prompt: "Search recipes")
     }
 
