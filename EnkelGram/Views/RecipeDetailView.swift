@@ -70,6 +70,19 @@ struct RecipeDetailView: View {
         return "Save"
     }
 
+    /// Text to share via share sheet (title + body + URL)
+    private var shareText: String {
+        var parts: [String] = []
+        if !recipe.title.isEmpty {
+            parts.append(recipe.title)
+        }
+        if !recipe.bodyText.isEmpty {
+            parts.append(recipe.bodyText)
+        }
+        parts.append(recipe.instagramURL)
+        return parts.joined(separator: "\n\n")
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -116,6 +129,15 @@ struct RecipeDetailView: View {
                             isExtracting = true
                             shouldExtract = true
                         }
+                    }
+                }
+            }
+
+            // Share button (only when fully saved)
+            if isFullySaved {
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: shareText) {
+                        Image(systemName: "square.and.arrow.up")
                     }
                 }
             }
