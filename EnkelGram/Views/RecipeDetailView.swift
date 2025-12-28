@@ -188,7 +188,17 @@ struct RecipeDetailView: View {
                 // Metadata
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Saved: \(recipe.dateSaved.formatted())")
-                    Text("Post ID: \(recipe.postID)")
+
+                    // Tappable Instagram URL
+                    if let url = URL(string: recipe.instagramURL) {
+                        Link(recipe.instagramURL, destination: url)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Text(recipe.instagramURL)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
