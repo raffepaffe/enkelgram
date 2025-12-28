@@ -76,54 +76,51 @@ struct NavigationTests {
 
     @Test("Store and retrieve recipe ID from UserDefaults")
     func testStoreAndRetrieveRecipeID() {
-        // Use a test suite name to avoid affecting real data
-        let testSuiteName = "com.enkel.EnkelGram.tests"
-        let defaults = UserDefaults(suiteName: testSuiteName)!
-
-        // Clean up before test
-        defaults.removeObject(forKey: "newRecipeID")
+        // Use a unique key per test to avoid race conditions in parallel execution
+        let testKey = "testStoreAndRetrieve_\(UUID().uuidString)"
+        let defaults = UserDefaults.standard
 
         // Store a recipe ID
         let recipeID = UUID()
-        defaults.set(recipeID.uuidString, forKey: "newRecipeID")
+        defaults.set(recipeID.uuidString, forKey: testKey)
 
         // Retrieve it
-        let storedIDString = defaults.string(forKey: "newRecipeID")
+        let storedIDString = defaults.string(forKey: testKey)
 
         #expect(storedIDString == recipeID.uuidString)
 
         // Clean up
-        defaults.removeObject(forKey: "newRecipeID")
+        defaults.removeObject(forKey: testKey)
     }
 
     @Test("Clear recipe ID after retrieval")
     func testClearRecipeIDAfterRetrieval() {
-        let testSuiteName = "com.enkel.EnkelGram.tests"
-        let defaults = UserDefaults(suiteName: testSuiteName)!
+        // Use a unique key per test to avoid race conditions in parallel execution
+        let testKey = "testClearAfterRetrieval_\(UUID().uuidString)"
+        let defaults = UserDefaults.standard
 
         // Store a recipe ID
         let recipeID = UUID()
-        defaults.set(recipeID.uuidString, forKey: "newRecipeID")
+        defaults.set(recipeID.uuidString, forKey: testKey)
 
         // Simulate retrieval and clearing (as done in ContentView)
-        _ = defaults.string(forKey: "newRecipeID")
-        defaults.removeObject(forKey: "newRecipeID")
+        _ = defaults.string(forKey: testKey)
+        defaults.removeObject(forKey: testKey)
 
         // Verify it's cleared
-        let clearedID = defaults.string(forKey: "newRecipeID")
+        let clearedID = defaults.string(forKey: testKey)
 
         #expect(clearedID == nil)
     }
 
     @Test("Handle missing recipe ID gracefully")
     func testMissingRecipeID() {
-        let testSuiteName = "com.enkel.EnkelGram.tests"
-        let defaults = UserDefaults(suiteName: testSuiteName)!
+        // Use a unique key that definitely doesn't exist
+        let testKey = "testMissingID_\(UUID().uuidString)"
+        let defaults = UserDefaults.standard
 
-        // Ensure no recipe ID exists
-        defaults.removeObject(forKey: "newRecipeID")
-
-        let storedID = defaults.string(forKey: "newRecipeID")
+        // This key has never been set, so it should be nil
+        let storedID = defaults.string(forKey: testKey)
 
         #expect(storedID == nil)
     }
