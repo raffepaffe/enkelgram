@@ -150,21 +150,48 @@ struct InstagramWebView: UIViewRepresentable {
 
         /// Captures the thumbnail image from the interstitial page (image only, no text)
         private func captureInterstitialImage(from webView: WKWebView) {
-            let config = WKSnapshotConfiguration()
-            webView.takeSnapshot(with: config) { [weak self] image, error in
+            // Hide play button and other overlay elements before screenshot
+            let hideOverlaysJS = """
+                (function() {
+                    // Hide SVG elements (play button icons)
+                    document.querySelectorAll('svg').forEach(el => el.style.visibility = 'hidden');
+                    // Hide elements with play button roles
+                    document.querySelectorAll('[aria-label*="Play"], [aria-label*="play"]').forEach(el => el.style.visibility = 'hidden');
+                    // Hide common overlay containers
+                    document.querySelectorAll('[role="button"]').forEach(el => {
+                        if (el.querySelector('svg')) el.style.visibility = 'hidden';
+                    });
+                })();
+            """
+
+            webView.evaluateJavaScript(hideOverlaysJS) { [weak self] _, _ in
                 guard let self = self else { return }
 
-                guard let screenshot = image else {
-                    self.parent.onContentLoaded(nil, "")
-                    return
-                }
+                // Small delay to ensure CSS changes are applied
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    let config = WKSnapshotConfiguration()
+                    webView.takeSnapshot(with: config) { [weak self] image, error in
+                        guard let self = self else { return }
 
-                // Crop to just the image area (roughly middle portion of screen)
-                let croppedImage = self.cropToThumbnail(screenshot)
+                        // Restore visibility after screenshot
+                        let showOverlaysJS = """
+                            document.querySelectorAll('svg, [aria-label*="Play"], [aria-label*="play"], [role="button"]').forEach(el => el.style.visibility = 'visible');
+                        """
+                        webView.evaluateJavaScript(showOverlaysJS, completionHandler: nil)
 
-                // Return image only - text comes from second save after "Continue on web"
-                DispatchQueue.main.async {
-                    self.parent.onContentLoaded(croppedImage, "")
+                        guard let screenshot = image else {
+                            self.parent.onContentLoaded(nil, "")
+                            return
+                        }
+
+                        // Crop to just the image area (roughly middle portion of screen)
+                        let croppedImage = self.cropToThumbnail(screenshot)
+
+                        // Return image only - text comes from second save after "Continue on web"
+                        DispatchQueue.main.async {
+                            self.parent.onContentLoaded(croppedImage, "")
+                        }
+                    }
                 }
             }
         }
