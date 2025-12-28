@@ -18,6 +18,31 @@ import Vision
 ///
 struct InstagramWebView: UIViewRepresentable {
 
+    // MARK: - Constants
+
+    /// Cropping percentages for extracting the thumbnail from Instagram's interstitial page.
+    /// These values are calibrated for Instagram's current layout (as of 2024).
+    private enum CropInsets {
+        /// Skip top 18% - removes Instagram header and navigation bar
+        static let top: CGFloat = 0.18
+        /// Skip bottom 48% - removes "shared this reel" text and action buttons
+        static let bottom: CGFloat = 0.48
+        /// Skip 10% from each side - removes page margins
+        static let sides: CGFloat = 0.10
+    }
+
+    /// Settings for making the image background transparent
+    private enum BackgroundRemoval {
+        /// Color tolerance for matching background pixels (0-255 range).
+        /// Higher values = more aggressive removal, but may affect actual content.
+        /// 30 works well for Instagram's grey/white backgrounds.
+        static let colorTolerance: Int = 30
+    }
+
+    /// Scroll distance in pixels when loading the full post page.
+    /// This scrolls past the image to show the caption area for OCR.
+    private static let captionScrollDistance: Int = 400
+
     // MARK: - Properties
 
     /// The URL to load
@@ -196,18 +221,31 @@ struct InstagramWebView: UIViewRepresentable {
             }
         }
 
-        /// Crops the screenshot to extract just the thumbnail area
+        /// Crops the screenshot to extract just the thumbnail area from Instagram's page.
+        ///
+        /// Instagram's interstitial page has this layout:
+        /// ```
+        /// ┌─────────────────────┐
+        /// │  Instagram header   │ ← Skip (CropInsets.top)
+        /// │                     │
+        /// │    ┌───────────┐    │
+        /// │    │ Thumbnail │    │ ← Keep this area
+        /// │    └───────────┘    │
+        /// │                     │
+        /// │ "Shared this reel"  │ ← Skip (CropInsets.bottom)
+        /// │  [Open Instagram]   │
+        /// └─────────────────────┘
+        /// ```
         private func cropToThumbnail(_ image: UIImage) -> UIImage {
             guard let cgImage = image.cgImage else { return image }
 
             let width = CGFloat(cgImage.width)
             let height = CGFloat(cgImage.height)
 
-            // The thumbnail is roughly in the upper-middle of the screen
-            // Skip top ~18% (header/nav) and bottom ~48% (shared text + buttons)
-            let topInset = height * 0.18
-            let bottomInset = height * 0.48
-            let sideInset = width * 0.1
+            // Calculate crop area using our calibrated inset values
+            let topInset = height * CropInsets.top
+            let bottomInset = height * CropInsets.bottom
+            let sideInset = width * CropInsets.sides
 
             let cropRect = CGRect(
                 x: sideInset,
@@ -226,52 +264,88 @@ struct InstagramWebView: UIViewRepresentable {
             return makeBackgroundTransparent(croppedImage)
         }
 
-        /// Makes the edge background color transparent so it adapts to dark/light mode
+        /// Makes the edge background color transparent so the image adapts to dark/light mode.
+        ///
+        /// ## Why This Is Needed
+        /// Instagram screenshots have a solid background color (grey in dark mode, white in light mode).
+        /// When the user switches modes, this baked-in background looks wrong. By making it transparent,
+        /// the app's actual background shows through and adapts naturally.
+        ///
+        /// ## How It Works (Algorithm)
+        /// ```
+        /// 1. Sample 8 edge pixels (corners + midpoints)
+        ///    ┌──────┬──────┐
+        ///    │ •    •    • │ ← sample points
+        ///    │             │
+        ///    │ •         • │
+        ///    │             │
+        ///    │ •    •    • │
+        ///    └──────┴──────┘
+        ///
+        /// 2. Average their RGB values to get the background color
+        ///
+        /// 3. Loop through every pixel in the image:
+        ///    - If pixel color ≈ background color (within tolerance), make it transparent
+        ///    - Otherwise, keep the pixel as-is
+        /// ```
+        ///
+        /// ## Memory Layout
+        /// Each pixel is 4 bytes: [Red, Green, Blue, Alpha]
+        /// - Offset + 0 = Red (0-255)
+        /// - Offset + 1 = Green (0-255)
+        /// - Offset + 2 = Blue (0-255)
+        /// - Offset + 3 = Alpha (0 = transparent, 255 = opaque)
+        ///
         private func makeBackgroundTransparent(_ image: UIImage) -> UIImage {
             guard let cgImage = image.cgImage else { return image }
 
             let width = cgImage.width
             let height = cgImage.height
 
-            // Create a bitmap context with alpha channel
+            // Create a bitmap context (an in-memory canvas) with alpha channel support.
+            // CGContext lets us read and modify individual pixels.
             guard let context = CGContext(
-                data: nil,
+                data: nil,                                              // Let system allocate memory
                 width: width,
                 height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: width * 4,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                bitsPerComponent: 8,                                    // 8 bits per color channel
+                bytesPerRow: width * 4,                                 // 4 bytes per pixel (RGBA)
+                space: CGColorSpaceCreateDeviceRGB(),                   // RGB color space
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue // RGBA format with alpha at end
             ) else { return image }
 
-            // Draw the original image
+            // Draw the original image into our bitmap context
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
+            // Get raw pixel data as a byte array
             guard let pixelData = context.data else { return image }
             let data = pixelData.bindMemory(to: UInt8.self, capacity: width * height * 4)
 
-            // Sample edge pixels to find background color (sample from corners and edges)
+            // Step 1: Sample edge pixels to detect the background color
+            // We sample 8 points: 4 corners + 4 edge midpoints
             let samplePoints = [
                 (0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1),  // corners
                 (width / 2, 0), (width / 2, height - 1), (0, height / 2), (width - 1, height / 2)  // edge midpoints
             ]
 
+            // Step 2: Calculate average color from sample points
             var totalR = 0, totalG = 0, totalB = 0
             for (x, y) in samplePoints {
-                let offset = (y * width + x) * 4
-                totalR += Int(data[offset])
-                totalG += Int(data[offset + 1])
-                totalB += Int(data[offset + 2])
+                let offset = (y * width + x) * 4  // Calculate byte position for this pixel
+                totalR += Int(data[offset])       // Red
+                totalG += Int(data[offset + 1])   // Green
+                totalB += Int(data[offset + 2])   // Blue
             }
 
+            // Average RGB values = our detected background color
             let bgR = UInt8(totalR / samplePoints.count)
             let bgG = UInt8(totalG / samplePoints.count)
             let bgB = UInt8(totalB / samplePoints.count)
 
-            // Tolerance for color matching (0-255 range)
-            let tolerance: Int = 30
+            // Use the calibrated tolerance from our constants
+            let tolerance = BackgroundRemoval.colorTolerance
 
-            // Process pixels - make background transparent
+            // Step 3: Process every pixel - make background-colored pixels transparent
             for y in 0..<height {
                 for x in 0..<width {
                     let offset = (y * width + x) * 4
@@ -279,25 +353,26 @@ struct InstagramWebView: UIViewRepresentable {
                     let g = Int(data[offset + 1])
                     let b = Int(data[offset + 2])
 
-                    // Check if pixel matches background color within tolerance
+                    // Check if this pixel matches the background color (within tolerance)
+                    // If all RGB values are close to the background, it's a background pixel
                     if abs(r - Int(bgR)) < tolerance &&
                        abs(g - Int(bgG)) < tolerance &&
                        abs(b - Int(bgB)) < tolerance {
-                        // Make transparent
-                        data[offset + 3] = 0  // Alpha = 0
+                        // Make this pixel transparent by setting alpha to 0
+                        data[offset + 3] = 0
                     }
                 }
             }
 
-            // Create new image from modified context
+            // Step 4: Create new image from modified pixel data
             guard let newCGImage = context.makeImage() else { return image }
             return UIImage(cgImage: newCGImage, scale: image.scale, orientation: image.imageOrientation)
         }
 
         /// Captures text from the full post page via OCR
         private func captureFullPostText(from webView: WKWebView) {
-            // Scroll down to show caption area
-            let scrollJS = "window.scrollBy(0, 400);"
+            // Scroll down to show caption area (uses calibrated distance)
+            let scrollJS = "window.scrollBy(0, \(InstagramWebView.captionScrollDistance));"
 
             webView.evaluateJavaScript(scrollJS) { [weak self] _, _ in
                 guard let self = self else { return }

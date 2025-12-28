@@ -50,6 +50,9 @@ struct ContentView: View {
     /// Search text for filtering recipes
     @State private var searchText = ""
 
+    /// Error message for invalid URL
+    @State private var showingInvalidURLAlert = false
+
     /// Filtered recipes based on search text
     private var filteredRecipes: [SavedRecipe] {
         if searchText.isEmpty {
@@ -112,6 +115,13 @@ struct ContentView: View {
                     pendingRecipeID = nil
                 }
             }
+            .alert("Invalid URL", isPresented: $showingInvalidURLAlert) {
+                Button("OK") {
+                    // Keep the URL in the field so user can edit it
+                }
+            } message: {
+                Text("Please enter a valid Instagram post, reel, or TV URL.\n\nExample: instagram.com/p/ABC123/")
+            }
         }
     }
 
@@ -153,11 +163,20 @@ struct ContentView: View {
 
     // MARK: - Actions
 
-    /// Adds a recipe with the URL from the text field and navigates to it
+    /// Adds a recipe with the URL from the text field and navigates to it.
+    ///
+    /// Validates that the URL looks like an Instagram post/reel/TV URL before saving.
+    /// Shows an error alert if the URL is invalid.
     private func addRecipe() {
         let trimmedURL = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedURL.isEmpty else {
             urlText = ""
+            return
+        }
+
+        // Validate that it's an Instagram post URL (not a profile or random URL)
+        guard TextExtractionService.isValidInstagramURL(trimmedURL) else {
+            showingInvalidURLAlert = true
             return
         }
 
@@ -197,11 +216,15 @@ struct ContentView: View {
         }
     }
 
-    /// Deletes recipes at the specified indices
-    /// This is called when user swipes to delete
+    /// Deletes recipes at the specified indices from the filtered list.
+    ///
+    /// Important: The offsets are indices into `filteredRecipes`, not `recipes`.
+    /// When search is active, these arrays may be different, so we must use
+    /// the filtered array to find the correct recipe to delete.
     private func deleteRecipes(at offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(recipes[index])
+            // Use filteredRecipes because that's what the List displays
+            modelContext.delete(filteredRecipes[index])
         }
     }
 }

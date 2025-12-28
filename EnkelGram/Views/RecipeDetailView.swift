@@ -279,29 +279,45 @@ struct RecipeDetailView: View {
 
     // MARK: - Actions
 
-    /// Called when the WebView has loaded and we have extracted content
+    /// Called when the WebView has loaded and we have extracted content.
+    ///
+    /// The extraction process returns combined OCR + DOM text separated by a marker:
+    /// Format: "[OCR text]\n\n{{BODY}}[DOM text]"
+    /// - OCR text: Visual text recognized from the screenshot (used for title)
+    /// - DOM text: Text extracted from Instagram's HTML (used for body/recipe)
+    ///
+    /// - Parameters:
+    ///   - screenshot: The captured image (nil if only extracting text)
+    ///   - extractedText: Combined OCR and DOM text with {{BODY}} separator
     private func handleContentLoaded(screenshot: UIImage?, extractedText: String) {
-        // Save the screenshot (only if we got one and don't already have one)
+        // Save the screenshot as PNG (supports transparency for dark/light mode)
         if let screenshot = screenshot, recipe.screenshotData == nil {
             recipe.screenshotData = screenshot.pngData()
         }
 
-        // Process extracted text
+        // Process extracted text (only if we don't have a title yet)
         if !extractedText.isEmpty && recipe.title.isEmpty {
-            // Check if text contains DOM body marker
+            // Check if text contains the {{BODY}} marker that separates OCR from DOM text
             if extractedText.contains("{{BODY}}") {
                 // Split into OCR title and DOM body
                 let parts = extractedText.components(separatedBy: "\n\n{{BODY}}")
-                let ocrPart = parts[0]
+
+                // Safely get the OCR part (first element always exists after split)
+                guard let ocrPart = parts.first else {
+                    recipe.title = TextExtractionService.extractCaption(from: extractedText)
+                    return
+                }
+
+                // DOM part may not exist if marker was at the end
                 let domPart = parts.count > 1 ? parts[1] : ""
 
-                // Extract title from OCR text
+                // Extract a clean title from OCR text (filters Instagram UI elements)
                 recipe.title = TextExtractionService.extractCaption(from: ocrPart)
 
-                // Clean DOM body - remove Instagram metadata lines
+                // Clean DOM body - removes username/Follow header and metadata
                 recipe.bodyText = TextExtractionService.cleanDOMText(domPart)
             } else {
-                // No DOM body, just use OCR text as title
+                // No DOM body available, just use OCR text as title
                 recipe.title = TextExtractionService.extractCaption(from: extractedText)
             }
         }
@@ -313,7 +329,7 @@ struct RecipeDetailView: View {
 
         isExtracting = false
 
-        // SwiftData automatically saves changes
+        // Note: SwiftData automatically saves changes when properties are modified
     }
 
     /// Processes an imported photo: loads the image and extracts text via OCR
