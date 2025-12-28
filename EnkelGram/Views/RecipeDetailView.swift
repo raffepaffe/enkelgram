@@ -283,7 +283,7 @@ struct RecipeDetailView: View {
     private func handleContentLoaded(screenshot: UIImage?, extractedText: String) {
         // Save the screenshot (only if we got one and don't already have one)
         if let screenshot = screenshot, recipe.screenshotData == nil {
-            recipe.screenshotData = screenshot.jpegData(compressionQuality: 0.8)
+            recipe.screenshotData = screenshot.pngData()
         }
 
         // Process extracted text

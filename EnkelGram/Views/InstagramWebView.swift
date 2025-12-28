@@ -220,7 +220,78 @@ struct InstagramWebView: UIViewRepresentable {
                 return image
             }
 
-            return UIImage(cgImage: croppedCGImage, scale: image.scale, orientation: image.imageOrientation)
+            let croppedImage = UIImage(cgImage: croppedCGImage, scale: image.scale, orientation: image.imageOrientation)
+
+            // Make background transparent so it adapts to dark/light mode
+            return makeBackgroundTransparent(croppedImage)
+        }
+
+        /// Makes the edge background color transparent so it adapts to dark/light mode
+        private func makeBackgroundTransparent(_ image: UIImage) -> UIImage {
+            guard let cgImage = image.cgImage else { return image }
+
+            let width = cgImage.width
+            let height = cgImage.height
+
+            // Create a bitmap context with alpha channel
+            guard let context = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return image }
+
+            // Draw the original image
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+            guard let pixelData = context.data else { return image }
+            let data = pixelData.bindMemory(to: UInt8.self, capacity: width * height * 4)
+
+            // Sample edge pixels to find background color (sample from corners and edges)
+            let samplePoints = [
+                (0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1),  // corners
+                (width / 2, 0), (width / 2, height - 1), (0, height / 2), (width - 1, height / 2)  // edge midpoints
+            ]
+
+            var totalR = 0, totalG = 0, totalB = 0
+            for (x, y) in samplePoints {
+                let offset = (y * width + x) * 4
+                totalR += Int(data[offset])
+                totalG += Int(data[offset + 1])
+                totalB += Int(data[offset + 2])
+            }
+
+            let bgR = UInt8(totalR / samplePoints.count)
+            let bgG = UInt8(totalG / samplePoints.count)
+            let bgB = UInt8(totalB / samplePoints.count)
+
+            // Tolerance for color matching (0-255 range)
+            let tolerance: Int = 30
+
+            // Process pixels - make background transparent
+            for y in 0..<height {
+                for x in 0..<width {
+                    let offset = (y * width + x) * 4
+                    let r = Int(data[offset])
+                    let g = Int(data[offset + 1])
+                    let b = Int(data[offset + 2])
+
+                    // Check if pixel matches background color within tolerance
+                    if abs(r - Int(bgR)) < tolerance &&
+                       abs(g - Int(bgG)) < tolerance &&
+                       abs(b - Int(bgB)) < tolerance {
+                        // Make transparent
+                        data[offset + 3] = 0  // Alpha = 0
+                    }
+                }
+            }
+
+            // Create new image from modified context
+            guard let newCGImage = context.makeImage() else { return image }
+            return UIImage(cgImage: newCGImage, scale: image.scale, orientation: image.imageOrientation)
         }
 
         /// Captures text from the full post page via OCR
