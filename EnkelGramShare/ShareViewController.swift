@@ -11,6 +11,7 @@ import SwiftUI
 import Social
 import UniformTypeIdentifiers
 import SwiftData
+import Vision
 
 /// The main view controller for the Share Extension.
 ///
@@ -26,8 +27,17 @@ class ShareViewController: UIViewController {
     /// The URL that was shared to us
     private var sharedURL: String?
 
+    /// The image that was shared to us
+    private var sharedImage: UIImage?
+
+    /// OCR text extracted from shared image
+    private var extractedOCRText: String?
+
     /// Loading indicator while we process
     private var activityIndicator: UIActivityIndicatorView?
+
+    /// Status label for updating text
+    private var statusLabel: UILabel?
 
     // MARK: - Lifecycle
 
@@ -58,9 +68,10 @@ class ShareViewController: UIViewController {
 
         // Status label
         let statusLabel = UILabel()
-        statusLabel.text = "Saving recipe..."
+        statusLabel.text = "Processing..."
         statusLabel.font = .systemFont(ofSize: 14)
         statusLabel.textColor = .secondaryLabel
+        self.statusLabel = statusLabel
 
         // Activity indicator
         let indicator = UIActivityIndicatorView(style: .medium)
@@ -81,7 +92,7 @@ class ShareViewController: UIViewController {
 
     // MARK: - Content Extraction
 
-    /// Extracts the shared URL from the extension context.
+    /// Extracts the shared URL or image from the extension context.
     private func extractSharedContent() {
         guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
             completeWithError("No items shared")
@@ -93,6 +104,12 @@ class ShareViewController: UIViewController {
             guard let attachments = item.attachments else { continue }
 
             for attachment in attachments {
+                // Check if this attachment contains an image
+                if attachment.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                    loadImage(from: attachment)
+                    return
+                }
+
                 // Check if this attachment contains a URL
                 if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                     loadURL(from: attachment)
@@ -107,7 +124,7 @@ class ShareViewController: UIViewController {
             }
         }
 
-        completeWithError("No URL found in shared content")
+        completeWithError("No content found")
     }
 
     /// Loads a URL from the attachment
@@ -151,6 +168,228 @@ class ShareViewController: UIViewController {
                     self?.completeWithError("Invalid text format")
                 }
             }
+        }
+    }
+
+    /// Loads an image from the attachment
+    private func loadImage(from attachment: NSItemProvider) {
+        statusLabel?.text = "Loading image..."
+
+        attachment.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { [weak self] item, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.completeWithError("Failed to load image: \(error.localizedDescription)")
+                    return
+                }
+
+                var image: UIImage?
+
+                if let url = item as? URL {
+                    // Image shared as file URL
+                    if let data = try? Data(contentsOf: url) {
+                        image = UIImage(data: data)
+                    }
+                } else if let data = item as? Data {
+                    // Image shared as data
+                    image = UIImage(data: data)
+                } else if let uiImage = item as? UIImage {
+                    // Image shared directly
+                    image = uiImage
+                }
+
+                if let image = image {
+                    self?.sharedImage = image
+                    self?.performOCR(on: image)
+                } else {
+                    self?.completeWithError("Could not load image")
+                }
+            }
+        }
+    }
+
+    /// Performs OCR on the image and shows recipe picker
+    private func performOCR(on image: UIImage) {
+        statusLabel?.text = "Extracting text..."
+
+        guard let cgImage = image.cgImage else {
+            completeWithError("Invalid image format")
+            return
+        }
+
+        let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        let request = VNRecognizeTextRequest { [weak self] request, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.completeWithError("OCR failed: \(error.localizedDescription)")
+                    return
+                }
+
+                guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                    self?.completeWithError("No text found in image")
+                    return
+                }
+
+                let text = observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+
+                if text.isEmpty {
+                    self?.completeWithError("No text found in image")
+                    return
+                }
+
+                // Clean the text
+                self?.extractedOCRText = TextExtractionService.cleanDOMText(text)
+                self?.showRecipePicker()
+            }
+        }
+
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try requestHandler.perform([request])
+            } catch {
+                DispatchQueue.main.async {
+                    self.completeWithError("OCR failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Shows a picker to choose which recipe to add the OCR text to
+    private func showRecipePicker() {
+        activityIndicator?.stopAnimating()
+        statusLabel?.text = "Select recipe"
+
+        // Fetch recent recipes
+        let recipes = fetchRecentRecipes()
+
+        let alert = UIAlertController(
+            title: "Add to Recipe",
+            message: "Choose a recipe to add the extracted text to",
+            preferredStyle: .actionSheet
+        )
+
+        // Add recent recipes as options
+        for recipe in recipes.prefix(5) {
+            let title = recipe.title.isEmpty ? "Untitled Recipe" : recipe.title
+            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+                self?.addTextToRecipe(recipe)
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+            self?.extensionContext?.cancelRequest(withError: NSError(
+                domain: "EnkelGramShare",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Cancelled"]
+            ))
+        })
+
+        // For iPad
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+
+        present(alert, animated: true)
+    }
+
+    /// Fetches recent recipes from the shared database
+    private func fetchRecentRecipes() -> [SavedRecipe] {
+        do {
+            let schema = Schema([SavedRecipe.self])
+            let config = ModelConfiguration(
+                schema: schema,
+                url: getSharedDatabaseURL(),
+                allowsSave: false
+            )
+            let container = try ModelContainer(for: schema, configurations: config)
+            let context = ModelContext(container)
+
+            var descriptor = FetchDescriptor<SavedRecipe>(
+                sortBy: [SortDescriptor(\.dateSaved, order: .reverse)]
+            )
+            descriptor.fetchLimit = 5
+
+            return try context.fetch(descriptor)
+        } catch {
+            print("Failed to fetch recipes: \(error)")
+            return []
+        }
+    }
+
+    /// Shows append/replace choice for adding text to a recipe
+    private func addTextToRecipe(_ recipe: SavedRecipe) {
+        let alert = UIAlertController(
+            title: "Add Text",
+            message: "How would you like to add the extracted text?",
+            preferredStyle: .alert
+        )
+
+        alert.addAction(UIAlertAction(title: "Append", style: .default) { [weak self] _ in
+            self?.saveTextToRecipe(recipe, replace: false)
+        })
+
+        alert.addAction(UIAlertAction(title: "Replace", style: .destructive) { [weak self] _ in
+            self?.saveTextToRecipe(recipe, replace: true)
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+            // Go back to recipe picker
+            self?.showRecipePicker()
+        })
+
+        present(alert, animated: true)
+    }
+
+    /// Saves the OCR text to the recipe (append or replace)
+    private func saveTextToRecipe(_ recipe: SavedRecipe, replace: Bool) {
+        guard let ocrText = extractedOCRText else {
+            completeWithError("No text to add")
+            return
+        }
+
+        let recipeID = recipe.id
+
+        do {
+            let schema = Schema([SavedRecipe.self])
+            let config = ModelConfiguration(
+                schema: schema,
+                url: getSharedDatabaseURL(),
+                allowsSave: true
+            )
+            let container = try ModelContainer(for: schema, configurations: config)
+            let context = ModelContext(container)
+
+            // Fetch the recipe again in this context
+            var descriptor = FetchDescriptor<SavedRecipe>(
+                predicate: #Predicate<SavedRecipe> { $0.id == recipeID }
+            )
+            descriptor.fetchLimit = 1
+
+            guard let existingRecipe = try context.fetch(descriptor).first else {
+                completeWithError("Recipe not found")
+                return
+            }
+
+            // Append or replace the body text
+            if replace {
+                existingRecipe.bodyText = ocrText
+            } else if existingRecipe.bodyText.isEmpty {
+                existingRecipe.bodyText = ocrText
+            } else {
+                existingRecipe.bodyText += "\n\n" + ocrText
+            }
+
+            try context.save()
+
+            // Open main app to the recipe
+            completeSuccessfully(recipeID: recipeID)
+
+        } catch {
+            completeWithError("Failed to update recipe: \(error.localizedDescription)")
         }
     }
 

@@ -8,6 +8,7 @@
 
 import SwiftUI
 import WebKit
+import PhotosUI
 
 /// The detail view for a recipe.
 ///
@@ -42,6 +43,18 @@ struct RecipeDetailView: View {
 
     /// Error message if something goes wrong
     @State private var errorMessage: String?
+
+    /// Selected photo from picker
+    @State private var selectedPhoto: PhotosPickerItem?
+
+    /// OCR text extracted from imported screenshot
+    @State private var importedOCRText: String = ""
+
+    /// Show append/replace confirmation dialog
+    @State private var showImportConfirmation: Bool = false
+
+    /// Loading state for OCR processing
+    @State private var isProcessingOCR: Bool = false
 
     // MARK: - Computed Properties
 
@@ -140,7 +153,42 @@ struct RecipeDetailView: View {
                         Image(systemName: "square.and.arrow.up")
                     }
                 }
+
+                // Import screenshot button
+                ToolbarItem(placement: .primaryAction) {
+                    if isProcessingOCR {
+                        ProgressView()
+                    } else {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Image(systemName: "text.viewfinder")
+                        }
+                    }
+                }
             }
+        }
+        .onChange(of: selectedPhoto) { oldValue, newValue in
+            if let newValue {
+                processImportedPhoto(newValue)
+            }
+        }
+        .confirmationDialog("Import Text", isPresented: $showImportConfirmation) {
+            Button("Append to Recipe") {
+                if !recipe.bodyText.isEmpty {
+                    recipe.bodyText += "\n\n" + importedOCRText
+                } else {
+                    recipe.bodyText = importedOCRText
+                }
+                importedOCRText = ""
+            }
+            Button("Replace Recipe") {
+                recipe.bodyText = importedOCRText
+                importedOCRText = ""
+            }
+            Button("Cancel", role: .cancel) {
+                importedOCRText = ""
+            }
+        } message: {
+            Text("How would you like to add the extracted text?")
         }
     }
 
@@ -266,6 +314,46 @@ struct RecipeDetailView: View {
         isExtracting = false
 
         // SwiftData automatically saves changes
+    }
+
+    /// Processes an imported photo: loads the image and extracts text via OCR
+    private func processImportedPhoto(_ item: PhotosPickerItem) {
+        isProcessingOCR = true
+        selectedPhoto = nil
+
+        Task {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self),
+                      let uiImage = UIImage(data: data) else {
+                    await MainActor.run {
+                        isProcessingOCR = false
+                    }
+                    return
+                }
+
+                // Run OCR on the image
+                TextExtractionService.shared.extractText(from: uiImage) { extractedText in
+                    DispatchQueue.main.async {
+                        isProcessingOCR = false
+
+                        if extractedText.isEmpty {
+                            errorMessage = "No text found in image"
+                            return
+                        }
+
+                        // Clean the extracted text
+                        let cleanedText = TextExtractionService.cleanDOMText(extractedText)
+                        importedOCRText = cleanedText
+                        showImportConfirmation = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessingOCR = false
+                    errorMessage = "Failed to load image"
+                }
+            }
+        }
     }
 }
 

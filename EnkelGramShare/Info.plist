@@ -32,6 +32,9 @@
 				<!-- Accept text (Instagram sometimes shares URLs as text) -->
 				<key>NSExtensionActivationSupportsText</key>
 				<true/>
+				<!-- Accept images (for OCR import) -->
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>1</integer>
 			</dict>
 		</dict>
 	</dict>
