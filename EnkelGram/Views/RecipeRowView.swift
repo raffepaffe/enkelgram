@@ -52,20 +52,16 @@ struct RecipeRowView: View {
     private var thumbnailView: some View {
         if let imageData = recipe.screenshotData,
            let uiImage = UIImage(data: imageData) {
-            // Show the actual screenshot
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.clear)
+            // Show the actual screenshot - no rounded corners to avoid white border issues
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
                 .frame(width: 100, height: 150)
-                .overlay {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipped()
         } else {
             // Show a placeholder when no screenshot yet
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.gray.opacity(0.2))
+                .fill(Color(.secondarySystemBackground))
                 .frame(width: 100, height: 150)
                 .overlay {
                     Image(systemName: "photo")
