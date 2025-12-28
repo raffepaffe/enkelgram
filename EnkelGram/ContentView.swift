@@ -47,6 +47,22 @@ struct ContentView: View {
     /// Track if we've already checked for new recipes (to avoid re-navigating on return)
     @State private var hasCheckedForNewRecipe = false
 
+    /// Search text for filtering recipes
+    @State private var searchText = ""
+
+    /// Filtered recipes based on search text
+    private var filteredRecipes: [SavedRecipe] {
+        if searchText.isEmpty {
+            return recipes
+        }
+        let query = searchText.lowercased()
+        return recipes.filter { recipe in
+            recipe.title.lowercased().contains(query) ||
+            recipe.bodyText.lowercased().contains(query) ||
+            recipe.instagramURL.lowercased().contains(query)
+        }
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -123,13 +139,14 @@ struct ContentView: View {
     /// The list of saved recipes
     private var recipeListView: some View {
         List {
-            ForEach(recipes) { recipe in
+            ForEach(filteredRecipes) { recipe in
                 NavigationLink(value: recipe) {
                     RecipeRowView(recipe: recipe)
                 }
             }
             .onDelete(perform: deleteRecipes)
         }
+        .searchable(text: $searchText, prompt: "Search recipes")
     }
 
     // MARK: - Actions
