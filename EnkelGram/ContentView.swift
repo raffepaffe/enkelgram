@@ -167,6 +167,7 @@ struct ContentView: View {
     ///
     /// Validates that the URL looks like an Instagram post/reel/TV URL before saving.
     /// Shows an error alert if the URL is invalid.
+    /// If a recipe with the same post ID already exists, navigates to it instead of creating a duplicate.
     private func addRecipe() {
         let trimmedURL = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedURL.isEmpty else {
@@ -177,6 +178,15 @@ struct ContentView: View {
         // Validate that it's an Instagram post URL (not a profile or random URL)
         guard TextExtractionService.isValidInstagramURL(trimmedURL) else {
             showingInvalidURLAlert = true
+            return
+        }
+
+        // Check for duplicates by post ID
+        if let newPostID = TextExtractionService.extractPostID(from: trimmedURL),
+           let existingRecipe = recipes.first(where: { $0.postID == newPostID }) {
+            // Recipe already exists - navigate to it instead of creating duplicate
+            urlText = ""
+            navigationPath.append(existingRecipe)
             return
         }
 

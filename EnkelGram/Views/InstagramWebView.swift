@@ -3,12 +3,11 @@
 //  EnkelGram
 //
 //  A WebView wrapper that loads Instagram posts and extracts content.
-//  Uses WKWebView for web content and Vision framework for OCR.
+//  Uses WKWebView for web content. OCR is delegated to TextExtractionService.
 //
 
 import SwiftUI
 import WebKit
-import Vision
 
 /// A SwiftUI wrapper around WKWebView that handles Instagram content extraction.
 ///
@@ -467,53 +466,10 @@ struct InstagramWebView: UIViewRepresentable {
             }
         }
 
-        /// Uses Vision framework to extract text from an image
+        /// Extracts text from an image using the shared TextExtractionService.
+        /// This ensures consistent OCR configuration (languages, accuracy) across the app.
         private func extractText(from image: UIImage, completion: @escaping (String) -> Void) {
-            guard let cgImage = image.cgImage else {
-                completion("")
-                return
-            }
-
-            // Create a Vision request handler with our image
-            let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-
-            // Create the text recognition request
-            let request = VNRecognizeTextRequest { request, error in
-                if let error = error {
-                    print("Vision OCR error: \(error.localizedDescription)")
-                    completion("")
-                    return
-                }
-
-                // Extract the recognized text from the results
-                guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                    completion("")
-                    return
-                }
-
-                // Combine all recognized text
-                let recognizedStrings = observations.compactMap { observation in
-                    // Get the top candidate (most likely text)
-                    observation.topCandidates(1).first?.string
-                }
-
-                let fullText = recognizedStrings.joined(separator: "\n")
-                completion(fullText)
-            }
-
-            // Configure the request for best accuracy
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-
-            // Perform the request on a background thread
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try requestHandler.perform([request])
-                } catch {
-                    print("Failed to perform Vision request: \(error)")
-                    completion("")
-                }
-            }
+            TextExtractionService.shared.extractText(from: image, completion: completion)
         }
     }
 }

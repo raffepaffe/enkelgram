@@ -74,6 +74,76 @@ struct TextExtractionServiceTests {
     }
 }
 
+// MARK: - Post ID Extraction Tests
+
+struct PostIDExtractionTests {
+
+    @Test("Extract post ID from standard post URL")
+    func testExtractPostID() {
+        let url = "https://www.instagram.com/p/ABC123/"
+        #expect(TextExtractionService.extractPostID(from: url) == "ABC123")
+    }
+
+    @Test("Extract post ID from reel URL")
+    func testExtractReelPostID() {
+        let url = "https://www.instagram.com/reel/XYZ789/"
+        #expect(TextExtractionService.extractPostID(from: url) == "XYZ789")
+    }
+
+    @Test("Extract post ID from TV URL")
+    func testExtractTVPostID() {
+        let url = "https://www.instagram.com/tv/VIDEO123/"
+        #expect(TextExtractionService.extractPostID(from: url) == "VIDEO123")
+    }
+
+    @Test("Extract post ID without trailing slash")
+    func testExtractPostIDNoSlash() {
+        let url = "https://www.instagram.com/p/ABC123"
+        #expect(TextExtractionService.extractPostID(from: url) == "ABC123")
+    }
+
+    @Test("Extract post ID with query parameters")
+    func testExtractPostIDWithParams() {
+        // Instagram sometimes adds tracking params - we should still get the ID
+        let url = "https://www.instagram.com/p/ABC123/?utm_source=ig_web"
+        // The current implementation will include the query string after the slash
+        // This test documents current behavior
+        #expect(TextExtractionService.extractPostID(from: url) == "ABC123")
+    }
+
+    @Test("Return nil for profile URL")
+    func testProfileURLReturnsNil() {
+        let url = "https://www.instagram.com/username/"
+        #expect(TextExtractionService.extractPostID(from: url) == nil)
+    }
+
+    @Test("Return nil for empty string")
+    func testEmptyStringReturnsNil() {
+        #expect(TextExtractionService.extractPostID(from: "") == nil)
+    }
+
+    @Test("Return nil for non-Instagram URL")
+    func testNonInstagramReturnsNil() {
+        let url = "https://www.example.com/p/ABC123/"
+        #expect(TextExtractionService.extractPostID(from: url) == nil)
+    }
+
+    @Test("Same post ID from different URL formats")
+    func testSamePostIDDifferentFormats() {
+        let postID = "DDBKjNSxnWF"
+        let urls = [
+            "https://www.instagram.com/p/\(postID)/",
+            "https://instagram.com/p/\(postID)",
+            "http://www.instagram.com/p/\(postID)/",
+            "instagram.com/p/\(postID)/"
+        ]
+
+        for url in urls {
+            #expect(TextExtractionService.extractPostID(from: url) == postID, "Failed for URL: \(url)")
+        }
+    }
+}
+
 // MARK: - Caption Extraction Tests
 
 struct CaptionExtractionTests {

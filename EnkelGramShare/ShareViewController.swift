@@ -11,7 +11,6 @@ import SwiftUI
 import Social
 import UniformTypeIdentifiers
 import SwiftData
-import Vision
 
 /// The main view controller for the Share Extension.
 ///
@@ -207,51 +206,21 @@ class ShareViewController: UIViewController {
         }
     }
 
-    /// Performs OCR on the image and shows recipe picker
+    /// Performs OCR on the image using TextExtractionService and shows recipe picker.
+    /// Using the shared service ensures consistent OCR configuration (languages, accuracy).
     private func performOCR(on image: UIImage) {
         statusLabel?.text = "Extracting text..."
 
-        guard let cgImage = image.cgImage else {
-            completeWithError("Invalid image format")
-            return
-        }
-
-        let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        let request = VNRecognizeTextRequest { [weak self] request, error in
+        TextExtractionService.shared.extractText(from: image) { [weak self] text in
             DispatchQueue.main.async {
-                if let error = error {
-                    self?.completeWithError("OCR failed: \(error.localizedDescription)")
-                    return
-                }
-
-                guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                    self?.completeWithError("No text found in image")
-                    return
-                }
-
-                let text = observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
-
                 if text.isEmpty {
                     self?.completeWithError("No text found in image")
                     return
                 }
 
-                // Clean the text
+                // Clean the text using the same service
                 self?.extractedOCRText = TextExtractionService.cleanDOMText(text)
                 self?.showRecipePicker()
-            }
-        }
-
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try requestHandler.perform([request])
-            } catch {
-                DispatchQueue.main.async {
-                    self.completeWithError("OCR failed: \(error.localizedDescription)")
-                }
             }
         }
     }
@@ -419,7 +388,8 @@ class ShareViewController: UIViewController {
 
     // MARK: - Save and Complete
 
-    /// Saves the URL to the shared database and dismisses
+    /// Saves the URL to the shared database and dismisses.
+    /// If a recipe with the same post ID already exists, navigates to it instead of creating a duplicate.
     private func saveAndComplete() {
         guard let urlString = sharedURL else {
             completeWithError("No URL to save")
@@ -438,7 +408,22 @@ class ShareViewController: UIViewController {
             let container = try ModelContainer(for: schema, configurations: config)
             let context = ModelContext(container)
 
-            // Create and save the recipe
+            // Check for duplicates by post ID
+            if let newPostID = TextExtractionService.extractPostID(from: urlString) {
+                // Fetch all recipes and check for matching post ID
+                let descriptor = FetchDescriptor<SavedRecipe>()
+                let existingRecipes = try context.fetch(descriptor)
+
+                if let existingRecipe = existingRecipes.first(where: { $0.postID == newPostID }) {
+                    // Recipe already exists - navigate to it instead of creating duplicate
+                    let defaults = UserDefaults(suiteName: "group.com.enkel.EnkelGram")
+                    defaults?.set(existingRecipe.id.uuidString, forKey: "newRecipeID")
+                    completeSuccessfully(recipeID: existingRecipe.id)
+                    return
+                }
+            }
+
+            // Create and save the new recipe
             let recipe = SavedRecipe(instagramURL: urlString)
             context.insert(recipe)
             try context.save()

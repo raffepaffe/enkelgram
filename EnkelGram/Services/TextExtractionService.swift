@@ -160,6 +160,48 @@ extension TextExtractionService {
         let lowercased = urlString.lowercased()
         return patterns.contains { lowercased.contains($0) }
     }
+
+    /// Extracts the Instagram post ID from a URL.
+    ///
+    /// Instagram URLs contain a unique post ID that identifies the content:
+    /// - `instagram.com/p/ABC123/` → `ABC123`
+    /// - `instagram.com/reel/XYZ789/` → `XYZ789`
+    /// - `instagram.com/tv/VIDEO/` → `VIDEO`
+    ///
+    /// This is used for deduplication - same post ID means same content.
+    ///
+    /// - Parameter urlString: The Instagram URL
+    /// - Returns: The post ID, or nil if not found or not an Instagram URL
+    static func extractPostID(from urlString: String) -> String? {
+        // First verify it's an Instagram URL
+        let lowercased = urlString.lowercased()
+        guard lowercased.contains("instagram.com") || lowercased.contains("instagr.am") else {
+            return nil
+        }
+
+        // Look for /p/, /reel/, or /tv/ patterns
+        let patterns = ["/p/", "/reel/", "/tv/"]
+
+        for pattern in patterns {
+            if let range = urlString.range(of: pattern) {
+                let afterPrefix = urlString[range.upperBound...]
+                // Post ID ends at the next slash, query param, or end of string
+                if let endRange = afterPrefix.range(of: "/") {
+                    let postID = String(afterPrefix[..<endRange.lowerBound])
+                    return postID.isEmpty ? nil : postID
+                }
+                if let endRange = afterPrefix.range(of: "?") {
+                    let postID = String(afterPrefix[..<endRange.lowerBound])
+                    return postID.isEmpty ? nil : postID
+                }
+                // No trailing slash or query - take the rest
+                let postID = String(afterPrefix)
+                return postID.isEmpty ? nil : postID
+            }
+        }
+
+        return nil
+    }
 }
 
 // MARK: - Caption Extraction Helper

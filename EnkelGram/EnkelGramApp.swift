@@ -32,8 +32,10 @@ struct EnkelGramApp: App {
             )
             modelContainer = try ModelContainer(for: schema, configurations: config)
         } catch {
-            // Schema changed - delete old database and create fresh one
-            // This handles migration issues during development
+            #if DEBUG
+            // Development only: delete old database and create fresh one
+            // This handles migration issues during development when schema changes
+            print("⚠️ Database schema error - deleting and recreating (DEBUG only)")
             try? FileManager.default.removeItem(at: EnkelGramApp.sharedDatabaseURL)
 
             do {
@@ -47,6 +49,10 @@ struct EnkelGramApp: App {
             } catch {
                 fatalError("Failed to create ModelContainer: \(error)")
             }
+            #else
+            // Production: never delete user data - crash with info for debugging
+            fatalError("Database migration failed. Error: \(error). Please report this issue.")
+            #endif
         }
     }
 
