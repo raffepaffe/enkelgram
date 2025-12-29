@@ -65,6 +65,9 @@ struct RecipeDetailView: View {
     /// Selected photo for image replacement (separate from OCR picker)
     @State private var selectedImageItem: PhotosPickerItem?
 
+    /// Show photo picker for OCR text import
+    @State private var showOCRPicker: Bool = false
+
     // MARK: - Computed Properties
 
     /// Whether we have saved the thumbnail image
@@ -161,26 +164,29 @@ struct RecipeDetailView: View {
                 }
             }
 
-            // Share button (only when fully saved)
+            // Menu button (only when fully saved)
             if isFullySaved {
-                ToolbarItem(placement: .primaryAction) {
-                    ShareLink(item: shareText) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                }
-
-                // Import screenshot button
                 ToolbarItem(placement: .primaryAction) {
                     if isProcessingOCR {
                         ProgressView()
                     } else {
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Image(systemName: "text.viewfinder")
+                        Menu {
+                            ShareLink(item: shareText) {
+                                Label("Share Recipe", systemImage: "square.and.arrow.up")
+                            }
+                            Button {
+                                showOCRPicker = true
+                            } label: {
+                                Label("Import Text from Image", systemImage: "text.viewfinder")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
                 }
             }
         }
+        .photosPicker(isPresented: $showOCRPicker, selection: $selectedPhoto, matching: .images)
         .onChange(of: selectedPhoto) { oldValue, newValue in
             if let newValue {
                 processImportedPhoto(newValue)
